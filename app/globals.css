@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 84 94% 70%; /* #BAFE66 */
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 84 94% 95%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 84 94% 90%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 84 94% 70%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 84 94% 70%; /* #BAFE66 */
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 84 94% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .hero-gradient {
+    @apply bg-gradient-to-br from-lime-200/50 via-background to-background;
+  }
+
+  .lime-glow {
+    @apply relative;
+  }
+
+  .lime-glow::before {
+    @apply absolute -inset-0.5 bg-gradient-to-r from-primary/80 to-lime-400/80 rounded-lg blur opacity-75 transition duration-300 group-hover:opacity-100;
+    content: "";
+  }
+
+  .lime-glow-content {
+    @apply relative bg-background rounded-lg p-4;
+  }
+
+  .mobile-nav-item {
+    @apply flex items-center gap-2 py-3 px-4 text-foreground hover:bg-muted rounded-md transition-colors;
+  }
+
+  .mobile-nav-item.active {
+    @apply bg-primary/10 text-primary font-medium;
+  }
+
+  .animated-bg {
+    @apply relative overflow-hidden;
+  }
+
+  .animated-bg::before {
+    content: "";
+    @apply absolute inset-0 bg-gradient-to-r from-primary/20 via-lime-400/20 to-primary/20 opacity-0 transition-opacity duration-300;
+  }
+
+  .animated-bg:hover::before {
+    @apply opacity-100;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
