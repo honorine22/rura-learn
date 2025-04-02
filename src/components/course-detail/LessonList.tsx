@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
-import { lessonProgressService } from '@/services/api';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Lesson {
   id: string;
@@ -49,11 +49,25 @@ const LessonList = ({ courseId, lessons, isEnrolled, onLessonComplete }: LessonL
     setLoadingLessonId(lessonId);
 
     try {
-      // Update lesson progress using API
-      await lessonProgressService.updateProgress(lessonId, user.id, !currentStatus);
+      // Update lesson progress using Supabase directly
+      const { error } = await supabase
+        .from('user_lesson_progress')
+        .upsert({
+          user_id: user.id,
+          lesson_id: lessonId,
+          completed: !currentStatus,
+          last_accessed: new Date().toISOString()
+        }, { onConflict: 'user_id,lesson_id' });
+
+      if (error) throw error;
 
       // Update UI through callback
       onLessonComplete(lessonId, !currentStatus);
+      
+      toast({
+        title: !currentStatus ? 'Lesson marked as complete' : 'Lesson marked as incomplete',
+        description: !currentStatus ? 'Your progress has been updated' : 'Lesson has been marked as incomplete',
+      });
     } catch (error: any) {
       console.error('Error updating lesson progress:', error);
       toast({
@@ -141,11 +155,14 @@ const LessonList = ({ courseId, lessons, isEnrolled, onLessonComplete }: LessonL
               {lesson.content}
             </div>
             {isEnrolled && (
-              <div className="flex justify-end space-x-2 mt-4 pl-7">
+              <div className="flex justify-between items-center mt-4 pl-7">
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleToggleCompletion(lesson.id, !!lesson.completed)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleCompletion(lesson.id, !!lesson.completed);
+                  }}
                   disabled={loadingLessonId === lesson.id}
                 >
                   {lesson.completed ? 'Mark as incomplete' : 'Mark as complete'}

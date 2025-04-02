@@ -90,44 +90,19 @@ export const updateLessonProgress = async (
     
     const completed = progressPercentage >= 90; // Mark as completed if progress is at least 90%
     
-    // First check if a record already exists
-    const { data: existingProgress } = await supabase
+    // Upsert the lesson progress record
+    const { error: progressError } = await supabase
       .from('user_lesson_progress')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('lesson_id', lessonId)
-      .maybeSingle();
+      .upsert({
+        user_id: userId,
+        lesson_id: lessonId,
+        completed,
+        last_accessed: new Date().toISOString()
+      }, { onConflict: 'user_id,lesson_id' });
       
-    if (existingProgress) {
-      // Update the existing record
-      const { error } = await supabase
-        .from('user_lesson_progress')
-        .update({
-          completed,
-          last_accessed: new Date().toISOString()
-        })
-        .eq('user_id', userId)
-        .eq('lesson_id', lessonId);
-        
-      if (error) {
-        console.error('Error updating lesson progress:', error);
-        throw error;
-      }
-    } else {
-      // Insert a new record
-      const { error } = await supabase
-        .from('user_lesson_progress')
-        .insert({
-          user_id: userId,
-          lesson_id: lessonId,
-          completed,
-          last_accessed: new Date().toISOString()
-        });
-        
-      if (error) {
-        console.error('Error inserting lesson progress:', error);
-        throw error;
-      }
+    if (progressError) {
+      console.error('Error updating lesson progress:', progressError);
+      throw progressError;
     }
     
     console.log(`Progress updated successfully. Completed: ${completed}`);
@@ -183,13 +158,18 @@ const updateCourseProgress = async (userId: string, courseId: string): Promise<v
     
     if (totalLessons === 0) return; // No lessons to track
     
+    const lessonIds = totalLessonsData.map(lesson => lesson.id);
+    
     // Get completed lessons for this user and course
+    // Fix the ambiguous column issue by explicitly specifying lesson.course_id
     const { data: completedLessonsData, error: completedError } = await supabase
       .from('user_lesson_progress')
-      .select('lesson_id')
-      .eq('user_id', userId)
+      .select('user_lesson_progress.lesson_id')
+      .eq('user_lesson_progress.user_id', userId)
       .eq('completed', true)
-      .in('lesson_id', totalLessonsData.map(lesson => lesson.id));
+      .in('lesson_id', lessonIds)
+      .join('lessons', 'user_lesson_progress.lesson_id = lessons.id')
+      .eq('lessons.course_id', courseId);
       
     if (completedError) throw completedError;
     
@@ -217,3 +197,5 @@ const updateCourseProgress = async (userId: string, courseId: string): Promise<v
     throw error;
   }
 };
+
+// No duplicate exports - just let the original export declarations work
