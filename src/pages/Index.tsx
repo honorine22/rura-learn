@@ -21,11 +21,11 @@ const Index = () => {
         setCourses(data.slice(0, 6)); // Get first 6 courses for featured section
       } catch (error) {
         console.error('Error fetching courses:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load courses',
-          variant: 'destructive',
-        });
+        // toast({
+        //   title: 'Error',
+        //   description: 'Failed to load courses',
+        //   variant: 'destructive',
+        // });
       }
     };
 

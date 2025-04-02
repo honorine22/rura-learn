@@ -5,7 +5,7 @@ import { BookOpen, CheckCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { enrollmentService } from '@/services/api';
+import { supabase } from '@/integrations/supabase/client';
 
 interface EnrollButtonProps {
   courseId: string;
@@ -33,8 +33,33 @@ const EnrollButton = ({ courseId, isEnrolled, onEnrollmentChange }: EnrollButton
 
     try {
       if (isEnrolled) {
-        // Unenroll from course
-        await enrollmentService.delete(user.id, courseId);
+        // Get the enrollment ID first before trying to delete
+        const { data: enrollmentData, error: fetchError } = await supabase
+          .from('enrollments')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('course_id', courseId)
+          .maybeSingle();
+          
+        if (fetchError) throw fetchError;
+        
+        if (!enrollmentData) {
+          toast({
+            title: 'Error',
+            description: 'Could not find your enrollment record',
+            variant: 'destructive',
+          });
+          setLoading(false);
+          return;
+        }
+        
+        // Unenroll from course using the enrollment ID
+        const { error } = await supabase
+          .from('enrollments')
+          .delete()
+          .eq('id', enrollmentData.id);
+          
+        if (error) throw error;
           
         toast({
           title: 'Unenrolled successfully',
@@ -43,8 +68,38 @@ const EnrollButton = ({ courseId, isEnrolled, onEnrollmentChange }: EnrollButton
         
         onEnrollmentChange(false);
       } else {
-        // Enroll in course
-        await enrollmentService.create(user.id, courseId);
+        // Check if enrollment already exists first
+        const { data: existingEnrollment, error: checkError } = await supabase
+          .from('enrollments')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('course_id', courseId)
+          .maybeSingle();
+          
+        if (checkError) throw checkError;
+        
+        // If already enrolled, update the UI state but don't try to insert again
+        if (existingEnrollment) {
+          toast({
+            title: 'Already enrolled',
+            description: 'You are already enrolled in this course',
+          });
+          onEnrollmentChange(true);
+          setLoading(false);
+          return;
+        }
+          
+        // Enroll in course using Supabase - set initial progress to 0
+        const { error } = await supabase
+          .from('enrollments')
+          .insert({
+            user_id: user.id,
+            course_id: courseId,
+            progress: 0, 
+            completed: false
+          });
+          
+        if (error) throw error;
           
         toast({
           title: 'Enrolled successfully',

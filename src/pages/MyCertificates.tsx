@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '@/components/layout/Navbar';
@@ -48,8 +47,15 @@ const MyCertificates = () => {
         const { data, error } = await supabase
           .from('certificates')
           .select(`
-            *,
-            course:courses(id, title, category, level)
+            id,
+            issue_date,
+            certificate_url,
+            course:course_id (
+              id, 
+              title, 
+              category, 
+              level
+            )
           `)
           .eq('user_id', user.id)
           .order('issue_date', { ascending: false });
@@ -57,14 +63,19 @@ const MyCertificates = () => {
         if (error) throw error;
 
         console.log('Certificates data:', data);
-        setCertificates(data as Certificate[]);
         
-        if (highlightedCourseId && data && data.length > 0) {
-          const highlighted = data.find(cert => cert.course.id === highlightedCourseId);
-          if (highlighted) {
-            setSelectedCertificate(highlighted as Certificate);
-            setShowCertificateModal(true);
+        if (data && data.length > 0) {
+          setCertificates(data as Certificate[]);
+          
+          if (highlightedCourseId) {
+            const highlighted = data.find((cert: any) => cert.course.id === highlightedCourseId);
+            if (highlighted) {
+              setSelectedCertificate(highlighted as Certificate);
+              setShowCertificateModal(true);
+            }
           }
+        } else {
+          setCertificates([]);
         }
       } catch (error: any) {
         console.error('Error fetching certificates:', error);
@@ -96,7 +107,6 @@ const MyCertificates = () => {
         });
       });
     } else {
-      // Fallback for browsers that don't support the Web Share API
       navigator.clipboard.writeText(certificate.certificate_url).then(() => {
         toast({
           title: 'Certificate link copied',
@@ -183,6 +193,8 @@ const MyCertificates = () => {
             
           if (!error && data) {
             setUserName(data.full_name || user.email || 'Student');
+          } else {
+            setUserName(user.email || 'Student');
           }
         };
         

@@ -7,11 +7,11 @@ import AIRecommendations from '@/components/courses/AIRecommendations';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Bot, SendHorizontal, Search } from 'lucide-react';
+import { Bot, SendHorizontal, Search, Sparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import CourseGrid from '@/components/courses/CourseGrid';
-import { courseService } from '@/services/api';
+import { supabase } from '@/integrations/supabase/client';
 
 const CATEGORY_KEYWORDS = {
   Technology: ['technology', 'tech', 'software', 'coding', 'programming', 'computer', 'digital', 'web', 'app', 'mobile', 'data', 'online', 'internet', 'it'],
@@ -37,6 +37,7 @@ const Learning = () => {
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [matchedCourses, setMatchedCourses] = useState<any[]>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+  const [useAI, setUseAI] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -51,25 +52,88 @@ const Learning = () => {
     }
   }, [keywords]);
 
-  // Fetch courses when interests or level change and a search has been performed
   useEffect(() => {
-    if (searchPerformed && (interests || level)) {
-      fetchMatchingCourses();
+    if (searchPerformed && message && !useAI) {
+      searchCoursesByKeywords(keywords);
     }
-  }, [interests, level, searchPerformed]);
+  }, [keywords, searchPerformed, useAI]);
 
-  const fetchMatchingCourses = async () => {
+  const searchCoursesByKeywords = async (searchKeywords: string[]) => {
+    if (!searchKeywords.length) return;
+    
     setIsLoadingCourses(true);
     try {
-      const data = await courseService.getAIRecommendations(interests, level);
-      if (data && data.recommendations) {
-        setMatchedCourses(data.recommendations);
+      console.log('Searching for courses with keywords:', searchKeywords);
+      
+      const detectedLevel = extractLevel(searchKeywords.join(' '));
+      console.log('Detected level from keywords:', detectedLevel);
+      
+      let query = supabase
+        .from('courses')
+        .select('*');
+      
+      if (detectedLevel) {
+        query = query.eq('level', detectedLevel);
+        console.log('Filtering courses by level:', detectedLevel);
+      }
+      
+      const { data: courses, error } = await query;
+        
+      if (error) throw error;
+      
+      if (!courses || courses.length === 0) {
+        console.log('No courses found matching the level filter');
+        setMatchedCourses([]);
+        setIsLoadingCourses(false);
+        return;
+      }
+      
+      if (detectedLevel) {
+        console.log(`Found ${courses.length} courses matching ${detectedLevel} level`);
+        
+        const nonLevelKeywords = searchKeywords.filter(keyword => {
+          const lowerKeyword = keyword.toLowerCase();
+          return !Object.values(LEVEL_KEYWORDS).flat().some(levelWord => 
+            lowerKeyword.includes(levelWord.toLowerCase())
+          );
+        });
+        
+        if (nonLevelKeywords.length > 0) {
+          console.log('Further filtering by non-level keywords:', nonLevelKeywords);
+          
+          const filteredResults = courses.filter(course => {
+            return nonLevelKeywords.some(keyword => 
+              course.title.toLowerCase().includes(keyword.toLowerCase()) ||
+              course.description.toLowerCase().includes(keyword.toLowerCase()) ||
+              course.category.toLowerCase().includes(keyword.toLowerCase())
+            );
+          });
+          
+          console.log(`Found ${filteredResults.length} courses after additional keyword filtering`);
+          setMatchedCourses(filteredResults.length > 0 ? filteredResults : courses);
+        } else {
+          setMatchedCourses(courses);
+        }
+      } else {
+        const lowerKeywords = searchKeywords.map(kw => kw.toLowerCase());
+        
+        const matchedResults = courses.filter(course => {
+          return lowerKeywords.some(keyword => 
+            course.title.toLowerCase().includes(keyword) ||
+            course.description.toLowerCase().includes(keyword) ||
+            course.category.toLowerCase().includes(keyword) ||
+            course.level.toLowerCase().includes(keyword)
+          );
+        });
+        
+        console.log(`Found ${matchedResults.length} courses matching general keywords`);
+        setMatchedCourses(matchedResults);
       }
     } catch (error) {
-      console.error('Error fetching courses based on chat:', error);
+      console.error('Error searching courses:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch matching courses. Please try again.',
+        description: 'Could not search for courses. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -87,22 +151,35 @@ const Learning = () => {
     setIsLoading(true);
 
     try {
-      const extractedKeywords = extractKeywords(message);
-      setKeywords(prev => [...prev, ...extractedKeywords]);
-      
-      const extractedInterests = extractInterests(message);
-      const extractedLevel = extractLevel(message);
-      
-      if (extractedInterests) setInterests(extractedInterests);
-      if (extractedLevel) setLevel(extractedLevel);
-      
-      setSearchPerformed(true);
-      
-      const responseText = generateResponse(extractedInterests, extractedLevel, extractedKeywords);
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      setChatHistory(prev => [...prev, { role: 'assistant', content: responseText }]);
+      if (useAI) {
+        // Use the AI assistant for more intelligent responses
+        await handleAIAssistant(message);
+      } else {
+        // Use the original keyword-based search
+        const extractedKeywords = extractKeywords(message);
+        setKeywords(prev => [...prev, ...extractedKeywords]);
+        
+        const extractedInterests = extractInterests(message);
+        const extractedLevel = extractLevel(message);
+        
+        if (extractedInterests) setInterests(extractedInterests);
+        if (extractedLevel) setLevel(extractedLevel);
+        
+        setSearchPerformed(true);
+        
+        await searchCoursesByKeywords(extractedKeywords);
+        
+        let responseText = '';
+        if (matchedCourses.length > 0) {
+          responseText = `I found ${matchedCourses.length} courses that match your keywords. Take a look at these courses related to ${extractedInterests || 'your interests'}!`;
+        } else {
+          responseText = `I couldn't find exact matches for "${message}", but here are some ${extractedInterests || 'recommended'} courses at ${extractedLevel || 'your'} level that might interest you.`;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        setChatHistory(prev => [...prev, { role: 'assistant', content: responseText }]);
+      }
     } catch (error) {
       console.error('Error processing message:', error);
       toast({
@@ -110,9 +187,76 @@ const Learning = () => {
         description: 'Failed to process your message. Please try again.',
         variant: 'destructive',
       });
+      
+      setChatHistory(prev => [...prev, { 
+        role: 'assistant', 
+        content: "I'm sorry, I encountered an error while processing your request. Please try again or contact support if the issue persists." 
+      }]);
     } finally {
       setIsLoading(false);
       setMessage('');
+    }
+  };
+
+  const handleAIAssistant = async (userMessage: string) => {
+    setSearchPerformed(true);
+    setIsLoadingCourses(true);
+    
+    try {
+      const response = await supabase.functions.invoke('learning-assistant', {
+        body: { message: userMessage, chatHistory },
+      });
+      
+      // Even if there's an error in the edge function, it will now return a 200 status
+      // with an error field in the response, so we don't need to check for response.error
+      const { response: aiResponse, recommendedCourses, error } = response.data;
+      
+      if (error) {
+        console.warn('AI assistant warning:', error);
+        toast({
+          title: 'AI Assistant',
+          description: 'Using basic mode due to AI service limitations.',
+          variant: 'default',
+        });
+      }
+      
+      // Update chat with AI response
+      setChatHistory(prev => [...prev, { 
+        role: 'assistant', 
+        content: aiResponse 
+      }]);
+      
+      // Update matched courses with AI recommendations
+      if (recommendedCourses && recommendedCourses.length > 0) {
+        setMatchedCourses(recommendedCourses);
+      } else {
+        // If no specific courses were recommended, fallback to keyword search
+        const extractedKeywords = extractKeywords(userMessage);
+        await searchCoursesByKeywords(extractedKeywords);
+      }
+    } catch (error) {
+      console.error('Error with AI assistant:', error);
+      toast({
+        title: 'AI Assistant Error',
+        description: 'Switching to basic mode. Try again later.',
+        variant: 'destructive',
+      });
+      
+      // Add fallback response to chat
+      setChatHistory(prev => [...prev, { 
+        role: 'assistant', 
+        content: "I'm experiencing technical difficulties. Let me help you with basic course matching instead." 
+      }]);
+      
+      // Switch to basic mode
+      setUseAI(false);
+      
+      // Fallback to keyword search
+      const extractedKeywords = extractKeywords(userMessage);
+      setKeywords(prev => [...prev, ...extractedKeywords]);
+      await searchCoursesByKeywords(extractedKeywords);
+    } finally {
+      setIsLoadingCourses(false);
     }
   };
 
@@ -146,7 +290,7 @@ const Learning = () => {
         }
       }
     }
-    return 'Technology'; // Default
+    return ''; // Return empty string instead of default to enable more precise filtering
   };
 
   const extractLevel = (text: string): string => {
@@ -159,19 +303,7 @@ const Learning = () => {
         }
       }
     }
-    return 'Beginner'; // Default
-  };
-
-  const generateResponse = (interests: string, level: string, keywords: string[]): string => {
-    let response = `I've found some ${level} level courses in ${interests} that might interest you.`;
-    
-    if (keywords.length > 0) {
-      const keywordPreview = keywords.slice(0, 3).join(', ');
-      response += ` Based on keywords like "${keywordPreview}", I've tailored these recommendations for you.`;
-    }
-    
-    response += " Take a look at the courses below.";
-    return response;
+    return ''; // Return empty string instead of default to enable more precise filtering
   };
 
   return (
@@ -185,21 +317,52 @@ const Learning = () => {
             <div className={`${isMobile ? 'order-2' : 'order-1'} lg:col-span-1`}>
               <Card className="h-full shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center text-xl">
-                    <Bot className="h-5 w-5 mr-2 text-primary" />
-                    Learning Assistant
-                  </CardTitle>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="flex items-center text-xl">
+                      {useAI ? (
+                        <>
+                          <Sparkles className="h-5 w-5 mr-2 text-primary" />
+                          AI Learning Assistant
+                        </>
+                      ) : (
+                        <>
+                          <Bot className="h-5 w-5 mr-2 text-primary" />
+                          Learning Assistant
+                        </>
+                      )}
+                    </CardTitle>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setUseAI(!useAI)}
+                      className="text-xs"
+                    >
+                      {useAI ? "Switch to Basic" : "Switch to AI"}
+                    </Button>
+                  </div>
                   <CardDescription>
-                    Ask me about courses you're interested in
+                    {useAI 
+                      ? "Ask me anything about courses or learning topics" 
+                      : "Ask me about courses you're interested in"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col h-[350px] md:h-[450px] lg:h-[500px]">
                   <div className="flex-grow mb-4 overflow-y-auto max-h-full space-y-4 bg-muted/50 rounded-lg p-3 scrollbar-hide">
                     {chatHistory.length === 0 ? (
                       <div className="text-center py-6 text-muted-foreground">
-                        <Bot className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
-                        <p className="text-sm md:text-base">Hi! I can help you find the perfect courses.</p>
-                        <p className="text-sm md:text-base">Try asking about a topic you're interested in.</p>
+                        {useAI ? (
+                          <>
+                            <Sparkles className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
+                            <p className="text-sm md:text-base">Hello! I'm your AI learning assistant.</p>
+                            <p className="text-sm md:text-base">Ask me anything about courses or learning topics!</p>
+                          </>
+                        ) : (
+                          <>
+                            <Bot className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
+                            <p className="text-sm md:text-base">Hi! I can help you find the perfect courses.</p>
+                            <p className="text-sm md:text-base">Try asking about a topic you're interested in.</p>
+                          </>
+                        )}
                       </div>
                     ) : (
                       chatHistory.map((msg, index) => (
@@ -218,7 +381,9 @@ const Learning = () => {
                   </div>
                   <form onSubmit={handleMessageSubmit} className="flex gap-2 mt-auto">
                     <Textarea
-                      placeholder="Ask about courses or topics..."
+                      placeholder={useAI 
+                        ? "Ask about anything related to learning..." 
+                        : "Ask about courses or topics..."}
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       className="min-h-[60px] flex-grow resize-none text-sm md:text-base"
@@ -251,16 +416,18 @@ const Learning = () => {
                       Courses For You
                     </CardTitle>
                     <CardDescription>
-                      {matchedCourses.length > 0 
-                        ? `Found ${matchedCourses.length} ${interests ? interests : ''} courses ${level ? `for ${level} level` : ''}`
-                        : 'Searching for matching courses...'}
+                      {isLoadingCourses 
+                        ? "Searching for the best courses for you..." 
+                        : matchedCourses.length > 0 
+                          ? `Found ${matchedCourses.length} courses that might interest you`
+                          : "No specific courses found for your query"}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <CourseGrid 
                       courses={matchedCourses}
                       loading={isLoadingCourses}
-                      emptyMessage="No courses found matching your request. Try a different topic or level."
+                      emptyMessage="No courses found matching your request. Try different keywords or topics."
                     />
                   </CardContent>
                 </Card>
